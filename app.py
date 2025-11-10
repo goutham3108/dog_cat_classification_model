@@ -6,7 +6,6 @@ import numpy as np
 # Set page configuration
 st.set_page_config(
     page_title="Cat vs. Dog Classifier",
-    page_icon="🐾",
     layout="centered",
     initial_sidebar_state="auto",
 )
@@ -38,51 +37,62 @@ def preprocess_image(image):
     img_array = np.expand_dims(img_array, axis=0)
     return img_array
 
+# --- SESSION STATE ---
+if 'last_images' not in st.session_state:
+    st.session_state.last_images = []
+
 # --- UI COMPONENTS ---
 st.title("Cat vs. Dog Image Classifier")
-st.markdown("Upload an image or use your webcam to take a photo, and the model will predict whether it's a cat or a dog.")
-
-# Use session state to track the most recent image
-if 'last_image' not in st.session_state:
-    st.session_state.last_image = None
+st.markdown("Upload one or more images, or use your webcam to take a photo — the model will predict whether each is a cat or a dog.")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.header("Upload an Image")
-    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-    if uploaded_file is not None:
-        st.session_state.last_image = uploaded_file
+    st.header("Upload Images")
+    uploaded_files = st.file_uploader(
+        "Choose one or more images...",
+        type=["jpg", "jpeg", "png"],
+        accept_multiple_files=True,
+        key="file_uploader"
+    )
+    if uploaded_files:
+        st.session_state.last_images = uploaded_files
+    elif uploaded_files == []:
+        st.session_state.last_images = []
 
 with col2:
     st.header("Take a Photo")
-    camera_image = st.camera_input("Use your webcam")
+    camera_image = st.camera_input("Use your webcam", key="camera_input")
     if camera_image is not None:
-        st.session_state.last_image = camera_image
+        st.session_state.last_images = [camera_image]
+    elif camera_image is None and st.session_state.last_images:
+        # If user cleared camera photo (and previous was a camera photo), clear results
+        if len(st.session_state.last_images) == 1 and not hasattr(st.session_state.last_images[0], "name"):
+            st.session_state.last_images = []
 
 # --- PREDICTION LOGIC ---
-if st.session_state.last_image is not None and model is not None:
-    image_to_predict = Image.open(st.session_state.last_image)
-    
+if model is not None and st.session_state.last_images:
     st.divider()
-    st.subheader("Your Image:")
-    st.image(image_to_predict, width=300)
+    for img_file in st.session_state.last_images:
+        image_to_predict = Image.open(img_file)
+        st.subheader(f"Prediction for: {getattr(img_file, 'name', 'Camera Photo')}")
+        st.image(image_to_predict, width=300)
 
-    with st.spinner('Analyzing the image...'):
-        processed_image = preprocess_image(image_to_predict)
-        prediction = model.predict(processed_image)
-        score = float(prediction[0][0])  # ✅ Convert NumPy array to float
+        with st.spinner("Analyzing..."):
+            processed_image = preprocess_image(image_to_predict)
+            prediction = model.predict(processed_image)
+            score = float(prediction[0][0])
 
-    st.subheader("Prediction:")
-    if score > 0.5:
-        confidence = score * 100
-        st.success(f"**This looks like a Dog!** (Confidence: {confidence:.2f}%)")
-    else:
-        confidence = (1 - score) * 100
-        st.success(f"**This looks like a Cat!** (Confidence: {confidence:.2f}%)")
+        if score > 0.5:
+            confidence = score * 100
+            st.success(f"Dog detected (Confidence: {confidence:.2f}%)")
+        else:
+            confidence = (1 - score) * 100
+            st.success(f"Cat detected (Confidence: {confidence:.2f}%)")
 
 st.sidebar.markdown("---")
 st.sidebar.info(
     "**About this App:**\n"
-    "This application uses a Convolutional Neural Network (CNN) built with TensorFlow/Keras, leveraging transfer learning from the MobileNetV2 architecture. It was trained on the Oxford-IIIT Pet Dataset."
+    "This application uses a CNN built with TensorFlow/Keras, leveraging transfer learning from MobileNetV2. "
+    "It was trained on the Oxford-IIIT Pet Dataset."
 )
